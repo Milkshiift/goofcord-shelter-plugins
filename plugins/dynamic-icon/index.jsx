@@ -1,11 +1,11 @@
 const {
     flux: {
-        stores: {
-            GuildReadStateStore,
-            RelationshipStore
-        }
+        awaitStore
     }
 } = shelter;
+
+const GuildReadStateStore = await awaitStore("GUILD_READ_STATE_STORE");
+const RelationshipStore = await awaitStore("RELATIONSHIP_STORE");
 
 export async function onLoad() {
     GuildReadStateStore.addChangeListener(setBadge);

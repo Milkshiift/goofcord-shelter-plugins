@@ -7,7 +7,7 @@ function filterConsoleMessages() {
 
         console[method] = function () {
             const message = arguments[0];
-            if (message.includes("%c[")) {
+            if (typeof message === "string" && message.includes("%c[")) {
                 return;
             }
             originalConsoleMethods[method].apply(console, arguments);

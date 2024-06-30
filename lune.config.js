@@ -5,5 +5,5 @@
 import { defineConfig } from "@uwu/lune";
 
 export default defineConfig({
-  // configure lune here
+    minify: true
 });
