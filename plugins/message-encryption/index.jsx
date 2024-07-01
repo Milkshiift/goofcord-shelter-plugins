@@ -98,16 +98,9 @@ const css = `
       cursor: pointer;
     }
 `
-let injectedCss = false
 let unobserve;
-let cssModify;
 async function handleTextareaButton() {
-    if (!injectedCss) {
-        injectedCss = true
-        cssModify = injectCss(css);
-    } else {
-        cssModify(css);
-    }
+    injectOrUpdateCSS(css, "message-encryption-css");
     unobserve = observeDom('[class^="channelTextArea"] [class^="buttons"]', (node) => {
         if (document.querySelector('#encrypt-icon')) return
 
@@ -148,4 +141,16 @@ function removePrefix(str, prefix) {
         return str.substring(prefix.length);
     }
     return str;
+}
+
+function injectOrUpdateCSS(css, id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        const style = document.createElement("style");
+        style.id = id;
+        style.textContent = css;
+        document.head.appendChild(style);
+    } else {
+        element.textContent = css;
+    }
 }

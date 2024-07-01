@@ -4,8 +4,8 @@ const {
     }
 } = shelter;
 
-const GuildReadStateStore = await awaitStore("GUILD_READ_STATE_STORE");
-const RelationshipStore = await awaitStore("RELATIONSHIP_STORE");
+const GuildReadStateStore = await awaitStore("GuildReadStateStore");
+const RelationshipStore = await awaitStore("RelationshipStore");
 
 export async function onLoad() {
     GuildReadStateStore.addChangeListener(setBadge);
