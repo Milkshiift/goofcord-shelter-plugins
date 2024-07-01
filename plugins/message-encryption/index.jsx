@@ -96,6 +96,11 @@ const css = `
       width: 21px;
       height: 21px;
       cursor: pointer;
+      transition: transform .2s;
+    }
+    
+    .encryptContainer:hover svg {
+      transform: scale(1.15);
     }
 `
 let unobserve;
@@ -109,6 +114,7 @@ async function handleTextareaButton() {
         const toggleEnabled = () => {
             store.enabled = !enabled()
             setEnabled(!enabled())
+            window.goofcord.titlebar.flashTitlebar(store.enabled ? "#f9c23c" : "#D0D0D0");
         }
 
         const encryptIcon = (
