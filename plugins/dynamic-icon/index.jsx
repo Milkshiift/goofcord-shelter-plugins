@@ -4,10 +4,11 @@ const {
     }
 } = shelter;
 
-const GuildReadStateStore = await awaitStore("GuildReadStateStore");
-const RelationshipStore = await awaitStore("RelationshipStore");
-
+let GuildReadStateStore;
+let RelationshipStore;
 export async function onLoad() {
+    GuildReadStateStore = await awaitStore("GuildReadStateStore");
+    RelationshipStore = await awaitStore("RelationshipStore");
     GuildReadStateStore.addChangeListener(setBadge);
     RelationshipStore.addChangeListener(setBadge);
     setBadge();
