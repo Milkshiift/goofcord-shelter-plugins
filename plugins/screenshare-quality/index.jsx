@@ -13,26 +13,28 @@ const {
 
 const resolutions = [480, 720, 1080, 1440];
 const framerates = [5, 15, 30, 60];
-let resolution = 720;
+let height = 720;
+let width = 1280;
 let fps = 30;
-function patchScreenshareQuality(height, framerate) {
+function patchScreenshareQuality(newHeight, newFramerate) {
     // Not rounding causes a crash
-    resolution = roundToClosest(height, resolutions);
-    fps = roundToClosest(framerate, framerates);
+    height = roundToClosest(newHeight, resolutions);
+    width = Math.round(height * (screen.width / screen.height));
+    fps = roundToClosest(newFramerate, framerates);
 }
 
-function onStreamQualityChange() {
+async function onStreamQualityChange() {
     const mediaConnections = [...MediaEngineStore.getMediaEngine().connections];
     const currentUserId = UserStore.getCurrentUser().id;
     const streamConnection = mediaConnections.find(connection => connection.streamUserId === currentUserId);
     if (streamConnection) {
         streamConnection.videoStreamParameters[0].maxFrameRate = fps;
-        streamConnection.videoStreamParameters[0].maxResolution.height = resolution;
-        streamConnection.videoStreamParameters[0].maxResolution.width = Math.round(resolution * (screen.width / screen.height));
+        streamConnection.videoStreamParameters[0].maxResolution.height = height;
+        streamConnection.videoStreamParameters[0].maxResolution.width = width;
         streamConnection.videoQualityManager.goliveMaxQuality.bitrateMin = 500000;
-        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMax = 10000000;
+        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMax = 8000000;
         streamConnection.videoQualityManager.goliveMaxQuality.bitrateTarget = 600000;
-        log(`Patched current user stream with resolution: ${resolution} and fps: ${fps}`);
+        log(`Patched current user stream with resolution: ${height} and fps: ${fps}`);
     }
 }
 export function onLoad() {
