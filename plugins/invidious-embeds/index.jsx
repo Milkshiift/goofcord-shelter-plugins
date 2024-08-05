@@ -13,6 +13,7 @@ const {
 
 export async function onLoad() {
     store.instance ??= await updateFastestInstance();
+    if (window.goofcord.getConfig("invidiousEmbeds") === false) return;
     injectOrUpdateCSS(style, "invidious-embed-css");
     for (const t of TRIGGERS) dispatcher.subscribe(t, handleDispatch);
 }
