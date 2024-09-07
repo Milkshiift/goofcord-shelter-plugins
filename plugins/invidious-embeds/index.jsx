@@ -11,21 +11,26 @@ const {
     ui: { Header, HeaderTags, TextBox, injectCss },
 } = shelter;
 
-export async function onLoad() {
-    store.instance ??= await updateFastestInstance();
-    if (window.goofcord.getConfig("invidiousEmbeds") === false) return;
-    injectOrUpdateCSS(style, "invidious-embed-css");
-    for (const t of TRIGGERS) dispatcher.subscribe(t, handleDispatch);
-}
-
 const TRIGGERS = [
     "MESSAGE_CREATE",
     "MESSAGE_UPDATE",
     "UPDATE_CHANNEL_DIMENSIONS",
 ];
 
+export async function onLoad() {
+    store.instance ??= await updateFastestInstance();
+    if (window["goofcord"] && window.goofcord.getConfig("invidiousEmbeds") === false) return;
+    injectOrUpdateCSS(style, "invidious-embed-css");
+    for (const t of TRIGGERS) dispatcher.subscribe(t, handleDispatch);
+}
+
+export function onUnload() {
+    for (const t of TRIGGERS) dispatcher.unsubscribe(t, handleDispatch);
+}
+
 function handleDispatch(payload) {
     if (!store.instance) return;
+    // only handle messages in the selected channel
     if (
         (payload.type === "MESSAGE_CREATE" || payload.type === "MESSAGE_UPDATE") &&
         payload.message.channel_id !== SelectedChannelStore.getChannelId()
@@ -38,9 +43,9 @@ function handleDispatch(payload) {
             e.dataset.invidivizer = "1";
             unobs();
 
-            // fix duplicates lol
+            // fix duplicates
             e.parentElement.querySelector(`iframe[src*="${store.instance}"]`)?.remove();
-            e.parentElement.querySelector(`div[class="invidious-thumbnail"]`)?.remove();
+            e.parentElement.getElementsByClassName("invidious-thumbnail").item(0)?.remove();
 
             const found = reactFiberWalker(getFiber(e), "embed", true)?.memoizedProps?.embed?.url;
             if (typeof found !== "string" || !found.startsWith("https://www.youtube.com")) return;
@@ -92,10 +97,6 @@ export const settings = () => (
     </>
 );
 
-export function onUnload() {
-    for (const t of TRIGGERS) dispatcher.unsubscribe(t, handleDispatch);
-}
-
 function injectOrUpdateCSS(css, id) {
     const element = document.getElementById(id);
     if (!element) {
@@ -123,6 +124,7 @@ const style = `
         flex-wrap: wrap;
         justify-content: center;
         background-position: center;
+        background-size: cover;
     }
     
     .invidious-wrapper {
