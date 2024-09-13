@@ -10,13 +10,6 @@ cache = wreq.c;
 export const filters = {
     byProps: (...props) =>
         (m) => props.every((p) => m[p] !== void 0),
-    byExport: (exportt) => {
-        return m => {
-            const e = m[exportt];
-            if (!e) return false;
-            return e;
-        };
-    }
 };
 
 export function handleModuleNotFound(method, ...filter) {
@@ -70,16 +63,7 @@ function findByProps(...props) {
     return result;
 }
 
-function findByExport(exportt) {
-    const result = find(filters.byExport(exportt), { isIndirect: true });
-    if (!result || result.error) {
-        return handleModuleNotFound("findByExport", exportt);
-    }
-    return result;
-}
-
 window.webpackMagic = {
     findByProps,
-    findByExport,
     find
 };
