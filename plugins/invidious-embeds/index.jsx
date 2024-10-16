@@ -18,7 +18,10 @@ const TRIGGERS = [
 ];
 
 export async function onLoad() {
-    store.instance ??= await updateFastestInstance();
+    const today = new Date().getDate();
+    if (!store.instance || today % 2 === 0) {
+        store.instance = await updateFastestInstance();
+    }
     if (window["goofcord"] && window.goofcord.getConfig("invidiousEmbeds") === false) return;
     injectOrUpdateCSS(style, "invidious-embed-css");
     for (const t of TRIGGERS) dispatcher.subscribe(t, handleDispatch);
