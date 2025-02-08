@@ -16,70 +16,104 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+import {runtimeHashMessageKey} from "./intlHash.jsx";
+
 let wreq;
 let cache;
 
+// Capture Webpack require function
 window.webpackChunkdiscord_app.push([[Symbol()], {}, (x) => (wreq = x)]);
 window.webpackChunkdiscord_app.pop();
 cache = wreq.c;
 
-export const filters = {
-    byProps: (...props) =>
-        (m) => props.every((p) => m[p] !== void 0),
-};
-
-export function handleModuleNotFound(method, ...filter) {
-    const errMsg = `webpack.${method} found no module. Filter: ${filter}`;
-    console.error(new Error(errMsg));
-    return { error: errMsg };
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function find(filter, { isIndirect = false, isWaitFor = false } = {}) {
-    if (typeof filter !== "function") {
-        return handleModuleNotFound("find", "Invalid filter function");
-    }
+export function canonicalizeMatch(match) {
+    const isString = typeof match === "string";
+    let partialCanon = isString ? match : match.source;
 
-    for (const key in cache) {
-        const mod = cache[key];
-        if (!mod.loaded || !mod?.exports) continue;
+    partialCanon = partialCanon.replaceAll(/#{intl::([\w$+/]*)(?:::(\w+))?}/g, (_, key, modifier) => {
+        const hashed = modifier === "raw" ? key : runtimeHashMessageKey(key);
+        const escaped = escapeRegex(hashed);
+        const hasSpecialChars = !/^[a-zA-Z_$]/.test(escaped) || /[+/]/.test(escaped);
 
-        const exports = mod.exports;
-
-        if (filter(exports)) return isWaitFor ? [exports, key] : exports;
-
-        if (exports.default && filter(exports.default)) {
-            const found = exports.default;
-            return isWaitFor ? [found, key] : found;
+        if (hasSpecialChars) {
+            return isString
+                ? `["${escaped}"]`
+                : String.raw`(?:\["${escaped}"\])`;
         }
 
-        if (typeof exports === "object") {
-            for (const nestedKey in exports) {
-                if (nestedKey.length > 3) continue;
+        return isString ? `.${escaped}` : String.raw`(?:\.${escaped})`;
+    });
 
-                const nested = exports[nestedKey];
-                if (nested && filter(nested)) {
-                    return isWaitFor ? [nested, key] : nested;
+    if (isString) return partialCanon;
+
+    const canonSource = partialCanon.replaceAll("\\i", String.raw`(?:[A-Za-z_$][\w$]*)`);
+    return new RegExp(canonSource, match.flags);
+}
+
+const stringMatches = (s, filters) => filters.every(f => {
+    if (typeof f === "string") return s.includes(f);
+
+    // Clone regex to avoid mutating original lastIndex
+    const clone = new RegExp(f.source, f.flags);
+    return clone.test(s);
+});
+
+export const filters = {
+    byProps: (...props) => (m) => m && props.every(p => Object.hasOwn(m, p)),
+    byCode: (...code) => {
+        const parsed = code.map(canonicalizeMatch);
+        return (m) => {
+            if (typeof m !== "function") return false;
+            return stringMatches(Function.prototype.toString.call(m), parsed);
+        };
+    },
+};
+
+function handleModuleNotFound(method, ...args) {
+    const err = new Error(`webpack.${method} found no module. Filter: ${args}`);
+    console.error(err);
+    return { error: err.message };
+}
+
+function findModule(filter, { isWaitFor = false } = {}) {
+    for (const key in cache) {
+        const mod = cache[key];
+        if (!mod?.exports || !mod.loaded) continue;
+
+        const exports = mod.exports;
+        const check = (target) => target && filter(target);
+
+        if (check(exports)) return isWaitFor ? [exports, key] : exports;
+        if (check(exports.default)) return isWaitFor ? [exports.default, key] : exports.default;
+
+        if (typeof exports === "object" && !Array.isArray(exports)) {
+            for (const nestedKey in exports) {
+                if (check(exports[nestedKey])) {
+                    return isWaitFor ? [exports[nestedKey, key]] : exports[nestedKey];
                 }
             }
         }
     }
 
-    if (!isIndirect) {
-        return handleModuleNotFound("find", filter);
-    }
-
     return isWaitFor ? [null, null] : null;
 }
 
-function findByProps(...props) {
-    const result = find(filters.byProps(...props), { isIndirect: true });
-    if (!result || result.error) {
-        return handleModuleNotFound("findByProps", ...props);
-    }
-    return result;
+export function findByProps(...props) {
+    const result = findModule(filters.byProps(...props));
+    return result || handleModuleNotFound("findByProps", ...props);
+}
+
+export function findByCode(...code) {
+    const result = findModule(filters.byCode(...code));
+    return result || handleModuleNotFound("findByCode", ...code);
 }
 
 window.webpackMagic = {
     findByProps,
-    find
+    findByCode,
+    find: findModule,
 };

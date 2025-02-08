@@ -1,5 +1,5 @@
 # General
-### Invidous Embeds
+### Invidious Embeds
 `https://milkshiift.github.io/goofcord-shelter-plugins/invidious-embeds/`
 ### Console Suppressor
 `https://milkshiift.github.io/goofcord-shelter-plugins/console-suppressor/`

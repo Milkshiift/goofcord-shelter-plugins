@@ -1,8 +1,11 @@
 {
   "devDependencies": {
-    "@uwu/lune": "^1.4.2",
+    "@uwu/lune": "^1.5.1",
     "@uwu/shelter-defs": "^1.4.1"
   },
   "type": "module",
-  "workspaces": ["plugins/*"]
+  "workspaces": ["plugins/*"],
+  "dependencies": {
+    "@intrnl/xxhash64": "^0.1.2"
+  }
 }
