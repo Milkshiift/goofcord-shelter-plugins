@@ -27,14 +27,17 @@ async function onStreamQualityChange() {
     const mediaConnections = [...MediaEngineStore.getMediaEngine().connections];
     const currentUserId = UserStore.getCurrentUser().id;
     const streamConnection = mediaConnections.find(connection => connection.streamUserId === currentUserId);
+    const calculatedTargetBitrate = Math.round(
+        width * height * fps * 0.08, // width * height * fps * bits per pixel value
+    );
     if (streamConnection) {
         streamConnection.videoStreamParameters[0].maxFrameRate = fps;
         streamConnection.videoStreamParameters[0].maxResolution.height = height;
         streamConnection.videoStreamParameters[0].maxResolution.width = width;
-        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMin = 500000;
-        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMax = 8000000;
-        streamConnection.videoQualityManager.goliveMaxQuality.bitrateTarget = 600000;
-        log(`Patched current user stream with resolution: ${height} and fps: ${fps}`);
+        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMin = calculatedTargetBitrate*0.95;
+        streamConnection.videoQualityManager.goliveMaxQuality.bitrateMax = calculatedTargetBitrate*1.25;
+        streamConnection.videoQualityManager.goliveMaxQuality.bitrateTarget = calculatedTargetBitrate;
+        log(`Patched current user stream with resolution: ${height} FPS: ${fps} Target Bitrate: ${calculatedTargetBitrate}`);
     }
 }
 export function onLoad() {
