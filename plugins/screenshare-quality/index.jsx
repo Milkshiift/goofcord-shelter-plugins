@@ -41,6 +41,7 @@ async function onStreamQualityChange() {
     }
 }
 export function onLoad() {
+    if (window.goofcord.version.split(".")[1] > 8) return;
     dispatcher.subscribe("MEDIA_ENGINE_VIDEO_SOURCE_QUALITY_CHANGED", onStreamQualityChange)
 }
 
