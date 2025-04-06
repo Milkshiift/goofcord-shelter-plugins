@@ -1,151 +1,220 @@
-import {updateFastestInstance} from "./instanceTester.jsx";
+import { updateFastestInstance } from "./instanceTester.jsx";
+import {observeForNestedElement} from "../../util/utils.js";
 
+// Destructure Shelter APIs
 const {
     plugin: { store },
     observeDom,
-    flux: {
-        dispatcher,
-        storesFlat: { SelectedChannelStore },
-    },
-    util: { reactFiberWalker, getFiber },
-    ui: { Header, HeaderTags, TextBox, injectCss },
+    util: { getFiber, reactFiberWalker },
+    ui: { Header, HeaderTags, injectCss, TextBox, Button, SwitchItem }, // Assuming injectCss exists or use the provided utility
 } = shelter;
 
-const TRIGGERS = [
-    "MESSAGE_CREATE",
-    "MESSAGE_UPDATE",
-    "UPDATE_CHANNEL_DIMENSIONS",
-];
+const YOUTUBE_BASE_URL = "https://www.youtube.com/watch?v=";
+const YOUTUBE_THUMBNAIL_URL = "https://i.ytimg.com/vi/";
+const INVIDIOUS_EMBED_CLASS = "invidious-embed";
+const INVIDIOUS_THUMBNAIL_CLASS = "invidious-thumbnail";
+const INVIDIOUS_WRAPPER_CLASS = "invidious-wrapper";
+const INVIDIOUS_PLAYBUTTON_CLASS = "invidious-playbutton";
+const PROCESSED_MARKER_ATTR = "data-invidious-processed";
+
+const INSTANCE_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+
+async function maybeUpdateInstance() {
+    if (!store.autoupdate && store.lastInstanceUpdateTimestamp > 0) return;
+
+    const now = Date.now();
+    const lastUpdate = store.lastInstanceUpdateTimestamp ?? 0;
+    const needsUpdate = !store.instance || (now - lastUpdate > INSTANCE_UPDATE_INTERVAL);
+
+    if (needsUpdate) {
+        try {
+            console.log("Updating Invidious instance...");
+            store.instance = await updateFastestInstance();
+            store.lastInstanceUpdateTimestamp = now;
+            console.log("Invidious instance updated:", store.instance);
+        } catch (error) {
+            console.error("Failed to update Invidious instance:", error);
+        }
+    }
+}
+
+function createAndInsertInvidiousEmbed(messageElement, videoId) {
+    const embedUrl = `${store.instance}/embed/${videoId}?autoplay=1&player_style=youtube&local=true`;
+    const thumbnailUrl = `${YOUTUBE_THUMBNAIL_URL}${videoId}/hqdefault.jpg`;
+
+    const iframe = (
+        <iframe
+            className={INVIDIOUS_EMBED_CLASS}
+            src={embedUrl}
+            allow="fullscreen"
+            loading="lazy"
+        />
+    );
+
+    let previewElement;
+
+    // Function to replace the original preview with the invidious iframe
+    function showIframe() {
+        if (previewElement && previewElement.parentElement) {
+            previewElement.insertAdjacentElement("beforebegin", iframe);
+            previewElement.remove();
+            previewElement = null;
+        }
+    }
+
+    // Create Preview Thumbnail
+    previewElement = (
+        <div className={`${INVIDIOUS_THUMBNAIL_CLASS} ${INVIDIOUS_EMBED_CLASS}`}>
+            <div onClick={showIframe} className={INVIDIOUS_WRAPPER_CLASS}>
+                <svg className={INVIDIOUS_PLAYBUTTON_CLASS} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path fill="white" d="M9.25 3.35C7.87 2.45 6 3.38 6 4.96v14.08c0 1.58 1.87 2.5 3.25 1.61l10.85-7.04a1.9 1.9 0 0 0 0-3.22L9.25 3.35Z" />
+                </svg>
+            </div>
+        </div>
+    );
+    previewElement.style.backgroundImage = `url(${thumbnailUrl})`;
+
+    // Insert the preview after the original message element
+    messageElement.insertAdjacentElement("afterend", previewElement);
+
+    messageElement.style.display = "none";
+}
+
+function processMessageElement(element) {
+    element.parentElement.getElementsByClassName(INVIDIOUS_THUMBNAIL_CLASS).item(0)?.remove();
+    if (element.hasAttribute(PROCESSED_MARKER_ATTR)) return;
+    element.setAttribute(PROCESSED_MARKER_ATTR, "true");
+
+    try {
+        const fiber = getFiber(element);
+        const embed = reactFiberWalker(fiber, "embed", true)?.memoizedProps?.embed;
+
+        if (!embed?.url || typeof embed.url !== 'string' || !embed.url.startsWith(YOUTUBE_BASE_URL)) {
+            return; // Not a processable YouTube embed
+        }
+
+        const videoId = embed.url.substring(YOUTUBE_BASE_URL.length);
+        if (!videoId) {
+            console.warn("Could not extract video ID from:", embed.url);
+            return;
+        }
+
+        createAndInsertInvidiousEmbed(element, videoId);
+    } catch (error) {
+        console.error("Error processing message element for Invidious embed:", error, element);
+    }
+}
+
+let styleCallback;
+let unobserve = () => {};
 
 export async function onLoad() {
-    const today = new Date().getDate();
-    if (!store.instance || today % 2 === 0) {
-        store.instance = await updateFastestInstance();
-    }
     if (window["goofcord"] && window.goofcord.getConfig("invidiousEmbeds") === false) return;
-    injectOrUpdateCSS(style, "invidious-embed-css");
-    for (const t of TRIGGERS) dispatcher.subscribe(t, handleDispatch);
+
+    await maybeUpdateInstance();
+
+    if (!store.instance) {
+        console.warn("No Invidious instance configured or found. Embed replacement disabled.");
+        return;
+    }
+
+    if (styleCallback) {
+        styleCallback(style);
+    } else {
+        styleCallback = injectCss(style);
+    }
+
+    unobserve = observeForNestedElement('[data-list-id="chat-messages"]', `article:not([${PROCESSED_MARKER_ATTR}])`, processMessageElement);
 }
 
 export function onUnload() {
-    for (const t of TRIGGERS) dispatcher.unsubscribe(t, handleDispatch);
-}
-
-function handleDispatch(payload) {
-    if (!store.instance) return;
-    // only handle messages in the selected channel
-    if (
-        (payload.type === "MESSAGE_CREATE" || payload.type === "MESSAGE_UPDATE") &&
-        payload.message.channel_id !== SelectedChannelStore.getChannelId()
-    ) return;
-
-    const unobs = observeDom(
-        `[id^="chat-messages-"] article:not([data-invidivizer])`,
-        (e) => {
-            // mutex
-            e.dataset.invidivizer = "1";
-            unobs();
-
-            // fix duplicates
-            e.parentElement.querySelector(`iframe[src*="${store.instance}"]`)?.remove();
-            e.parentElement.getElementsByClassName("invidious-thumbnail").item(0)?.remove();
-
-            const found = reactFiberWalker(getFiber(e), "embed", true)?.memoizedProps?.embed?.url;
-            if (typeof found !== "string" || !found.startsWith("https://www.youtube.com")) return;
-            e.style.display = "none";
-
-            const embPath = found.replace("https://www.youtube.com/watch?v=", "")
-
-            const iframe = (<iframe
-                className={"invidious-embed"}
-                src={`${store.instance}/embed/${embPath}?autoplay=1&player_style=youtube&local=true`}
-                allow="fullscreen"
-            />)
-
-            function showIframe() {
-                e.insertAdjacentElement(
-                    "afterend",
-                    iframe,
-                );
-                preview.style.display = "none";
-            }
-
-            const preview = (<div className={"invidious-thumbnail invidious-embed"}>
-                <div className={"invidious-wrapper"}>
-                    <svg onClick={showIframe} className={"invidious-playbutton"} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <path fill="white" d="M9.25 3.35C7.87 2.45 6 3.38 6 4.96v14.08c0 1.58 1.87 2.5 3.25 1.61l10.85-7.04a1.9 1.9 0 0 0 0-3.22L9.25 3.35Z" className=""></path>
-                    </svg>
-                </div>
-            </div>)
-            preview.style.backgroundImage = `url(https://i.ytimg.com/vi/${embPath}/hqdefault.jpg)`;
-
-            e.insertAdjacentElement(
-                "afterend",
-                preview,
-            );
-        },
-    );
-
-    setTimeout(unobs, 1000); // dangling
+    unobserve();
+    styleCallback();
+    styleCallback = undefined;
 }
 
 export const settings = () => (
     <>
         <Header tag={HeaderTags.H3}>Invidious Instance</Header>
         <TextBox
-            placeholder="my.instance.com"
-            value={store.instance}
-            onInput={(v) => (store.instance = v)}
+            placeholder="invidious.example.com"
+            value={store.instance ?? ""}
+            onInput={(v) => (store.instance = v?.trim() ? v.trim() : undefined)}
         />
+        {<br></br>}
+        {<br></br>}
+        <SwitchItem
+            value={store.autoupdate ?? true}
+            onChange={(v) => (store.autoupdate = v)}
+        >Auto-update instance?</SwitchItem>
+        <Button
+            grow={true}
+            onClick={async () => { store.lastInstanceUpdateTimestamp = 0; await maybeUpdateInstance(); }}
+            style={{
+                position: 'relative', left: '50%',
+                transform: 'translate(-50%, 0%)'
+            }}
+        >Update Instance Now</Button>
+        {store.lastInstanceUpdateTimestamp && (
+            <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
+                Instance last checked/updated: {new Date(store.lastInstanceUpdateTimestamp).toLocaleString()}
+            </p>
+        )}
     </>
 );
 
-function injectOrUpdateCSS(css, id) {
-    const element = document.getElementById(id);
-    if (!element) {
-        const style = document.createElement("style");
-        style.id = id;
-        style.textContent = css;
-        document.head.appendChild(style);
-    } else {
-        element.textContent = css;
-    }
-}
-
 const style = `
-    .invidious-embed {
-        border: 0; 
-        width: 100%; 
-        max-width: 500px; 
-        aspect-ratio: 16/9; 
-        border-radius: 4px
+    .${INVIDIOUS_EMBED_CLASS} {
+        /* Shared styles for iframe and thumbnail */
+        display: block;
+        border: none;
+        width: 100%;
+        max-width: 500px;
+        aspect-ratio: 16 / 9;
+        border-radius: 4px;
+        background-color: #000;
+        overflow: hidden;
+        margin-top: 4px;
+        margin-bottom: 4px;
     }
-    
-    .invidious-thumbnail {
+
+    .${INVIDIOUS_THUMBNAIL_CLASS} {
         display: flex;
-        align-content: center;
-        flex-wrap: wrap;
+        align-items: center;
         justify-content: center;
         background-position: center;
         background-size: cover;
+        position: relative;
     }
-    
-    .invidious-wrapper {
+
+    .${INVIDIOUS_WRAPPER_CLASS} {
+        /* Centered play button container */
         box-sizing: border-box;
         display: flex;
+        align-items: center;
+        justify-content: center;
         padding: 12px;
-        height: 48px;
-        border-radius: 24px;
-        background-color: hsl(0 calc( 1 * 0%) 0% /.6);
-    }
-    
-    .invidious-playbutton {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background-color: hsla(0, 0%, 0%, 0.6);
+        transition: background-color 0.2s ease-in-out;
         cursor: pointer;
-        transition: opacity .25s;
-        opacity: .6;
     }
-    
-    .invidious-playbutton:hover {
-        opacity: 1;
+    .${INVIDIOUS_WRAPPER_CLASS}:hover {
+         background-color: hsla(0, 0%, 0%, 0.8);
     }
-`
+
+
+    .${INVIDIOUS_PLAYBUTTON_CLASS} {
+        width: 24px;
+        height: 24px;
+        transition: transform 0.2s ease-in-out;
+        opacity: 0.9;
+    }
+
+    .${INVIDIOUS_WRAPPER_CLASS}:hover .${INVIDIOUS_PLAYBUTTON_CLASS} {
+       transform: scale(1.1);
+       opacity: 1;
+    }
+`;

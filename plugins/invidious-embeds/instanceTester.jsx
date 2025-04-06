@@ -10,7 +10,7 @@ export async function updateFastestInstance() {
         if (!instance.includes("https")) continue;
         const start = performance.now();
         try {
-            await fetch(instance, {
+            await fetch(instance+"/embed/5IXQ6f6eMxQ?autoplay=1&player_style=youtube&local=true", {
                 mode: 'no-cors'
             });
         } catch (e) {}
