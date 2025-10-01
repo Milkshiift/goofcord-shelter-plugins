@@ -27,6 +27,11 @@ function setBadge() {
 
         let totalCount = mentionCount + pendingRequests;
 
+        if (totalCount === 0 && GuildReadStateStore.hasAnyUnread()) {
+            // Unread
+            totalCount = -1;
+        }
+
         window.goofcord.setBadgeCount(totalCount);
     } catch (e) {
         console.error(e);
