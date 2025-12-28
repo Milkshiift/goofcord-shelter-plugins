@@ -79,7 +79,7 @@ const css = `
     }
     
     .encryptContainer svg path {
-      fill: var(--interactive-normal) !important;
+      fill: var(--interactive-text-default) !important;
     }
     
     .encryptContainer2 {
@@ -106,7 +106,7 @@ const css = `
 let unobserve;
 async function handleTextareaButton() {
     injectOrUpdateCSS(css, "message-encryption-css");
-    unobserve = observeDom('[class^="channelTextArea"] [class^="buttons"]', (node) => {
+    unobserve = observeDom('[class*="channelTextArea"] [class*="buttons"]', (node) => {
         if (document.querySelector('#encrypt-icon')) return
 
         const [enabled, setEnabled] = shelter.solid.createSignal(!!store.enabled)
